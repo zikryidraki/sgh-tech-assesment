@@ -1,0 +1,228 @@
+---
+title: "Technical Assessment - Malaria Datasets"
+author: "zikry.idraki"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### Disclaimer
+This document is meant to serve as a technical demonstration of my (Zikry Idraki) ability to provide 3 informative visualizations about Malaria using r programming using 3 data sets provided at:
+https://github.com/rfordatascience/tidytuesday/tree/master/data/2018/2018-11-13
+
+```{r,echo=FALSE,results=FALSE,message=FALSE,warning=FALSE}
+library(tidyverse)
+```
+
+### Data Exploration and Preliminary Observations
+
+Loading the first data set in *malaria_deaths.csv* reveals that it contains a time series understood as the mortality rate of malaria from 1990 to 2016, standardized to per 100,000 people, categorized by countries at first glance. Further inspection into the *Entity* and *Code* columns shows that data also includes further geographic as well as economic groupings of countries.
+
+```{r}
+data <- read.csv("src/malaria_deaths.csv")
+summary(data)
+
+# number of unique entities
+data$Entity %>% unique() %>% length() %>% print()
+# unique entity codes
+data$Code %>% unique() %>% print()
+# entities with invalid codes
+data %>%
+  select(c('Entity','Code')) %>%
+  filter(data$Code %in% c("","OWID_WRL")) %>%
+  unique() %>%
+  print()
+```
+Similar categorical data is also provided in the other two data sets. *malaria_deaths_age.csv* can be interpreted to provide the recorded malaria deaths per "entity" further broken down by age groups. Meanwhile *malaria_deaths_age.csv* can be interpreted to provide the number detected malaria cases instead of deaths, standardized to per 1000 people at risk albeit for select years between 2000 and 2015 only.
+```{r}
+age <- read.csv("src/malaria_deaths_age.csv")
+summary(age)
+unique(age$age_group)
+inc <- read.csv("src/malaria_inc.csv")
+summary(inc)
+unique(inc$Year)
+```
+### Data Preparation
+Deciding to focus on Southeast Asian (SEA) countries, a fourth data set, *continents2.csv*, was used to filter the aforementioned data points from each data set. Countries were identified and filtered by their provided 3-letter ISO code. The country name used are also from this data set for consistency across visualizations.
+
+This dataset is openly available at https://www.kaggle.com/datasets/andradaolteanu/country-mapping-iso-continent-region
+```{r, message=FALSE}
+# filter reference for SEA countries
+ref <- read.csv("src/continents2.csv")
+sea_entities = 
+  ref %>%
+  select(names(ref)[c(1,3,7)]) %>%
+  set_names(c('country','code','region')) %>%
+  filter(region == 'South-eastern Asia')
+
+# Data set 1
+# rename columns and filter by alpha3 code
+new_names = c("entity",'code','year','deaths')
+data_set1 = 
+  data %>%
+  set_names(new_names) %>%
+  filter(code %in% sea_entities$code) %>%
+  right_join(sea_entities[c('country','code')], on=c('code')) %>%
+  select(c('country','year','deaths'))
+
+# Data set 2
+#filter by alpha3 code
+data_set2 <-
+  age %>%
+  filter(code %in% sea_entities$code) %>%
+  right_join(sea_entities[c('country','code')], on=c('code')) %>%
+  select(c('country','year','age_group','deaths'))
+
+# Data set 3
+# rename columns and filter by alpha3 code
+new_names = c("entity",'code','year','incidents')
+data_set3 = 
+  inc %>%
+  set_names(new_names) %>%
+  filter(code %in% sea_entities$code) %>%
+  left_join(sea_entities[c('country','code')], on=c('code')) %>%
+  select(c('country','year','incidents'))
+```
+### Visualization 1
+As an overview, we plot a simple time series on the malaria death rates for each SEA country from data set 1. From calculating the mean of death rate throughout time for each country shows, Brunei Darussalam  and Singapore both had zero death rates
+```{r out.width='100%'}
+# calculate mean death rates per country
+means =
+  data_set1 %>%
+  select(deaths) %>%
+  aggregate(by=list(data_set1$country),FUN = mean) %>%
+  .[order(.$deaths, decreasing=TRUE),] %>%
+  set_names(c('country','deaths (mean)'))
+print(means)
+
+#create order factor by country from mean
+data_set1$country <- factor(data_set1$country, means[['country']])
+
+exclude = c('Brunei Darussalam','Singapore')
+
+# plot 1 - death rate by Malaria in SEA from 1990-2016
+p1 <-
+data_set1 %>%
+  arrange(country) %>%
+  filter(!country %in% exclude) %>%
+  ggplot(aes(x=year,y=deaths, variable=country, colour=country))+
+  geom_point(size = 2, alpha =0.5) +
+  geom_line() +
+  theme_bw() +
+  labs(title ="Malaria deaths between 1990-2016",
+       subtitle ='in Southeast Asia') +
+  xlab("Year") +
+  ylab("Deaths per 100,000 people ") +
+  scale_x_continuous(breaks = seq(1900,2016,2),
+                     guide = guide_axis(angle=45),
+                     expand = c(0.02,0.02),
+                     ) +
+  scale_y_continuous(breaks = seq(0,35,5),
+                     expand = c(0,1),
+                     )
+
+print(p1)
+```
+<font size="2"><center>Note: Death rates for Brunei Darussalam and Singapore were zero throughout the time period thus excluded from the plot.</center></font size="2">
+\
+From the above plot, the main standouts would be the Malaria death rates of Cambodia, Myanmar. Cambodia showed a downward trend in Malaria deaths over the years while Myanmar had a rise in Malaria deaths in 1997 surpassing the former between 2001 and 2014. Besides Indonesia, the other SEA countries have relatively lower death rates of around 1.5 deaths per 100,000 or less. Considering the main contributing countries in Malaria death, the death rates in Southeast Asia as a whole is in a steady decline over the time period.
+### Visualization 2 
+For data set 2, we would like to observe how the overall distribution of malaria deaths in SEA have changed over time, presenting each age group as a percentage of the total deaths for each year.
+```{r out.width='100%'}
+# calculate percentage deaths by age group across time.
+age_sum <-
+  data_set2 %>%
+  select(deaths) %>%
+  aggregate(by=list(data_set2$year,data_set2$age_group), FUN=sum) %>%
+  set_names(c('year','age_group','deaths'))
+
+
+# create group hierachy for visualization
+group_order <- c("70 or older","50-69","15-49","5-14","Under 5")
+
+data_set2 <- data.frame()
+for (val in unique(age_sum[['year']]) ) {
+  subset <- age_sum %>% filter(year ==val)
+  total <- subset[['deaths']] %>% sum()
+  # apply factoring to age_groups
+  subset$age_group <- factor(subset$age_group,
+                             levels=group_order)
+  # % death
+  subset <- subset %>%
+    arrange(desc(age_group)) %>%
+    mutate(deaths_perc = deaths / total) %>%
+    select(!deaths) %>%
+    # create y coord for data labels
+    mutate(pos = round((cumsum(deaths_perc)-(0.5)*deaths_perc),2))
+  # append to new data_set
+  data_set2 <- rbind(data_set2, subset)
+}
+
+# plot 2 - Distribution of deaths in SEA from 1990-2016
+p2 <-
+data_set2 %>%
+  ggplot(aes(x=year, y=deaths_perc, fill=age_group)) +
+  geom_bar(position="fill", stat="identity") +
+  theme_bw() +
+  labs(title ="Distribution of Malaria Deaths across Age Groups",
+       subtitle ='in Southeast Asia') +
+  xlab("Year") +
+  ylab("Percentage") +
+  guides(fill=guide_legend(title='Age Group')) +
+  scale_x_continuous(breaks = seq(1900,2016,2),
+                     guide = guide_axis(angle=45),
+                     expand = c(0.02,0.02),
+  ) +
+  scale_y_continuous(labels=scales::percent,
+                     breaks = seq(0,1,0.2)) +
+  scale_fill_brewer(palette = "Dark2") +
+  geom_text(aes(x=year, y=pos,
+                label=paste0(round(deaths_perc*100),"%")),size=2)
+
+print(p2)
+```
+\
+From the above plot, it can be observed that the total malaria deaths of those 14 and under have been on a steady decline, from contributing 40% of all malaria deaths in 1990 to 14% in 2016. Throughout the years, those of age 15-49 make up the majority of malaria death.
+\
+### Visualization 3 
+Using the 3rd data set, we would like to see the change in distribution of Malaria cases of SEA countries throughout the time period with a simple boxplot chart.
+```{r out.width='100%'}
+#create country order for visualization
+cty_order <-
+  data_set3 %>%
+  filter(year==2000) %>%
+  .[order(.$incidents, decreasing=TRUE),] %>%
+  .$country
+  
+data_set3$country <- factor(data_set3$country, cty_order)
+
+#create factor for year
+data_set3$year <- as.factor(data_set3$year)
+
+# plot 3 - Distribution of incident rates
+p3 <-
+data_set3 %>%
+  ggplot(aes(x=year,y=incidents)) +
+  geom_boxplot(outlier.colour='red',
+               outlier.shape = 12,
+               outlier.size = 5) +
+  geom_point(aes(colour=country),
+             size = 3,
+             alpha=0.7) +
+  theme_bw()+
+  labs(title ="Incidence of Malaria between 2000-2015",
+     subtitle ='in Southeast Asia') +
+  xlab("Year") +
+  ylab("Incidence of Malaria per 1000 at risk") +
+  scale_x_discrete(guide = guide_axis(angle=45)) +
+  scale_y_continuous(breaks = seq(0,500,50), limit=c(0,500))
+
+print(p3)
+```
+\
+From the boxplot above, we can observe that distribution of malaria cases across the SEA countries is steadily narrowing, with the mean sharply falling from about 75 cases per 1000 at risk in 2000 to around 12 in 2005. Malaria cases in Timor-Leste were abnormally higher than the other countries in 2000 and 2005 albeit on a downward trend every 5 years.
+```{r,echo=FALSE,results=FALSE,message=FALSE,warning=FALSE,fig.show='hide'}
+
+```
