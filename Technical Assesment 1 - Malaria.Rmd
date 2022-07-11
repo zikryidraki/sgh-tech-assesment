@@ -222,7 +222,7 @@ data_set3 %>%
 print(p3)
 ```
 \
-From the boxplot above, we can observe that distribution of malaria cases across the SEA countries is steadily narrowing, with the mean sharply falling from about 75 cases per 1000 at risk in 2000 to around 12 in 2005. Malaria cases in Timor-Leste were abnormally higher than the other countries in 2000 and 2005 albeit on a downward trend every 5 years.
+From the boxplot above, we can observe that distribution of malaria cases across the SEA countries is steadily narrowing, with the mean sharply falling from about 75 cases per 1000 at risk in 2000 to around 12 in 2005. Malaria cases in Timor-Leste were abnormally higher than the other countries in 2000 and 2005 albeit on a downward trend between each year interval.
 ```{r,echo=FALSE,results=FALSE,message=FALSE,warning=FALSE,fig.show='hide'}
 
 ```
